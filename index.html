@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Vancouver Commute</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Import Mapbox GL JS -->
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js"></script>
+    <link
+      href="https://api.tiles.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css"
+      rel="stylesheet"
+    />
+
+    <!-- Import Mapbox GL Directions -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.0.2/mapbox-gl-directions.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.0.2/mapbox-gl-directions.css"
+      type="text/css"
+    />
+
+    <!-- Import Turf & Polyline -->
+    <script src="https://npmcdn.com/@turf/turf/turf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mapbox-polyline/1.1.1/polyline.js"></script>
+    <!-- CSS Styling elements -->
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Open Sans', sans-serif;
+      }
+      h1 {
+        color: #111;
+        font-family: 'Open Sans Condensed', sans-serif;
+        font-size: 20px;
+        font-weight: 40px;
+        line-height: 20px;
+        margin: 0 0 0;
+        padding: 20px 30px;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        color: #111;
+        font-family: 'Open Sans Condensed',
+        sans-serif;
+        font-size: 18px; f
+        font-weight: 2px;
+        line-height: 20px;
+        margin: 0 0 24px;
+        padding: 0 30px;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
+      h3 {
+        margin-top: 10px;
+        position:static;
+        font-size: 18px;
+      }
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+      }
+      #titleBox {
+        position: absolute;
+        margin-top: 10px;
+        margin-left: 20px;
+        width: 260px;
+        top: 0;
+        height: 100px;
+        background-color: #fff;
+        font-family: sans-serif;
+        border-radius: 3px;
+      }
+      .sidebar {
+        position: absolute;
+        margin-top: 205px;
+        margin-left: 20px;
+        width: 220px;
+        top: 0;
+        bottom: 2px;
+        padding: 20px;
+        background-color: #fff;
+        font-family: sans-serif;
+        border-radius: 3px;
+      }
+      #instructions {
+        position: absolute;
+        margin-top: 120px;
+        margin-left: 20px;
+        width: 240px;
+        top: 0;
+        /* height: 110px; */
+        background-color: #fff;
+        font-family: sans-serif;
+        padding: 10px;
+      }
+      .card {
+        font-size: small;
+        border-bottom: solid #d3d3d3 2px;
+        margin-bottom: 15px;
+      }
+
+      .card-header {
+        font-weight: bold;
+        padding: 6px;
+      }
+
+      .no-route {
+        background-color: #d3d3d3;
+        color: #f00;
+      }
+
+      .construction-found {
+        background-color: #d3d3d3;
+        color: #fff;
+      }
+
+      .route-found {
+        background-color: #33a532;
+        color: #fff;
+      }
+
+      .card-details {
+        padding: 3px 6px;
+      }
+
+    </style>
+  </head>
+<!-- Creating Title, instructions, and sidebar -->
+  <body>
+    <div id="map"></div>
+    <div id = "titleBox"><h1>  Metro Vancouver Commute </h1>
+    </div>
+    <div id = "instructions"><a>Input your home and work location to find a route that avoids construction (shown in red).</a>
+    </div>
+    <div class="sidebar">
+        <h2>Reports</h2>
+      <div id="reports"></div>
+    </div>
+
+
+    <script>
+      mapboxgl.accessToken = 'pk.eyJ1IjoiZXJpY2t2MTEyIiwiYSI6ImNsMDRibXpnbTBkdHkzY3Fvd2IyNGNhMWoifQ.epGDeAEntAuFZiWyK9OF8w';
+      const map = new mapboxgl.Map({
+        container: 'map', // Specify the container ID
+        style: 'mapbox://styles/erickv112/cl12nlx9x000a14s6896dcpdg', // Specify which map style to use
+        center: [-123.004682,49.253064], // Specify the starting position [lng, lat]
+        zoom: 10 // Specify the starting zoom
+      });
+
+      const directions = new MapboxDirections({
+        accessToken: mapboxgl.accessToken,
+        unit: 'metric',
+        profile: 'mapbox/driving',
+        alternatives: false,
+        geometries: 'geojson',
+        controls: { instructions: true },
+        flyTo: false
+      });
+
+      map.addControl(directions, 'top-right');
+      map.scrollZoom.enable();
+// Data for construction sites in Vancouver
+      const clearances = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.182792,49.24893]
+            },
+            properties: {
+              clearance: "6' 2",
+              'description': 'Test'
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.179357,49.24949]
+            },
+            properties: {
+              clearance: "6' 7",
+              'description': 'Test'
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.181074,49.24860]
+            },
+            properties: {
+              clearance: "6' 7"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.159259,49.24882]
+            },
+            properties: {
+              clearance: "6' 0"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.160977,49.24804]
+            },
+            properties: {
+              clearance: "6' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.157541,49.24781]
+            },
+            properties: {
+              clearance: "6' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.159774,49.24770]
+            },
+            properties: {
+              clearance: "6' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.164616,49.27012]
+            },
+            properties: {
+              clearance: "6' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.164523,49.26393]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.160057,49.26393]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.148548,49.26404]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.148033,49.26236]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.143738,49.26258]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              'coordinates': [-123.147174,49.26538]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.14391,49.26516]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.128996,49.24256]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.132775,49.24301]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.128996,49.24626]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.135524,49.26362]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.122956,49.20733]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.101656,49.21092]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.060429,49.20778]
+            },
+            properties: {
+              clearance: "13' 6"
+            }
+          },
+
+
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.116428,49.23335]
+            },
+            properties: {
+              clearance: "11' 6"
+            }
+          },
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [-123.069517,49.23855]
+            },
+            properties: {
+              clearance: "11' 6"
+            }
+          }
+
+        ]
+      };
+// Using turf to add a buffer zone of construction sites
+      const construction = turf.buffer(clearances, 0.1, { units: 'kilometers' });
+      let bbox = [0, 0, 0, 0];
+      let polygon = turf.bboxPolygon(bbox);
+
+      map.on('load', () => {
+        map.addLayer({
+          id: 'clearances',
+          type: 'fill',
+          source: {
+            type: 'geojson',
+            data: construction
+          },
+          layout: {},
+          paint: {
+            'fill-color': '#f03b20',
+            'fill-opacity': 0.5,
+            'fill-outline-color': '#f03b20'
+          }
+        });
+// Sourcing the route from Mapbox
+        map.addSource('theRoute', {
+          type: 'geojson',
+          data: {
+            type: 'Feature'
+          }
+        });
+
+        map.addLayer({
+          id: 'theRoute',
+          type: 'line',
+          source: 'theRoute',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
+          paint: {
+            'line-color': '#cccccc',
+            'line-opacity': 0.5,
+            'line-width': 8,
+            'line-blur': 0.5
+          }
+        });
+
+        // Source and layer for the bounding box
+        map.addSource('theBox', {
+          type: 'geojson',
+          data: {
+            type: 'Feature'
+          }
+        });
+        map.addLayer({
+          id: 'theBox',
+          type: 'fill',
+          source: 'theBox',
+          layout: {},
+          paint: {
+            'fill-color': '#FFC300',
+            'fill-opacity': 0.5,
+            'fill-outline-color': '#FFC300'
+          }
+        });
+      });
+
+      // //Creating pop up for construction site
+      // const popup = new mapboxgl.Popup({
+      //   closeButton: false,
+      //   closeOnClick: false
+      // });
+      // map.on('mouseenter', 'clearances', (e) => {
+      // // Change the cursor style as a UI indicator.
+      // map.getCanvas().style.cursor = 'pointer';
+      //
+      // // Copy coordinates array.
+      // const coordinates = e.features[0].geometry.coordinates.slice();
+      // const description = e.features[0].properties.description;
+      //
+      // // Ensure that if the map is zoomed out such that multiple
+      // // copies of the feature are visible, the popup appears
+      // // over the copy being pointed to.
+      // while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+      //   coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+      // }
+      //
+      // // Populate the popup and set its coordinates
+      // // based on the feature found.
+      //   popup.setLngLat(coordinates).setHTML(description).addTo(map);
+      //   });
+      //
+      //   map.on('mouseleave', 'clearances', () => {
+      //     map.getCanvas().style.cursor = '';
+      //     popup.remove();
+      //   });
+
+
+
+
+      let counter = 0;
+      const maxAttempts = 50;
+      let emoji = '';
+      let collision = '';
+      let detail = '';
+      const reports = document.getElementById('reports');
+
+      function addCard(id, element, clear, detail) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        // Add the response to the individual report created above
+        const heading = document.createElement('div');
+        // Set the class type based on clear value
+        heading.className =
+          clear === true
+            ? 'card-header route-found'
+            : 'card-header construction-found';
+        heading.innerHTML =
+          id === 0
+            ? `${emoji} The route ${collision}`
+            : `${emoji} Route ${id} ${collision}`;
+
+        const details = document.createElement('div');
+        details.className = 'card-details';
+        details.innerHTML = `This ${detail} construction.`;
+
+        card.appendChild(heading);
+        card.appendChild(details);
+        element.insertBefore(card, element.firstChild);
+      }
+
+      function noRoutes(element) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        // Add the response to the individual report created above
+        const heading = document.createElement('div');
+        heading.className = 'card-header no-route';
+        emoji = '🛑';
+        heading.innerHTML = `${emoji} Ending search.`;
+
+        // Add details to the individual report
+        const details = document.createElement('div');
+        details.className = 'card-details';
+        details.innerHTML = `No clear route found in ${counter} tries.`;
+
+        card.appendChild(heading);
+        card.appendChild(details);
+        element.insertBefore(card, element.firstChild);
+      }
+
+      directions.on('clear', () => {
+        map.setLayoutProperty('theRoute', 'visibility', 'none');
+        map.setLayoutProperty('theBox', 'visibility', 'none');
+
+        counter = 0;
+        reports.innerHTML = '';
+      });
+
+      directions.on('route', (event) => {
+        // Hide the route and box by setting the opacity to zero
+        map.setLayoutProperty('theRoute', 'visibility', 'none');
+        map.setLayoutProperty('theBox', 'visibility', 'none');
+
+        if (counter >= maxAttempts) {
+          noRoutes(reports);
+        } else {
+          // Make each route visible
+          for (const route of event.route) {
+            // Make each route visible
+            map.setLayoutProperty('theRoute', 'visibility', 'visible');
+            map.setLayoutProperty('theBox', 'visibility', 'visible');
+
+            // Get GeoJSON LineString feature of route
+            const routeLine = polyline.toGeoJSON(route.geometry);
+
+            // Create a bounding box around this route
+            // The app will find a random point in the new bbox
+            bbox = turf.bbox(routeLine);
+            polygon = turf.bboxPolygon(bbox);
+
+            // Update the data for the route
+            // This will update the route line on the map
+            map.getSource('theRoute').setData(routeLine);
+
+            // Update the box
+            map.getSource('theBox').setData(polygon);
+
+            const clear = turf.booleanDisjoint(construction, routeLine);
+            // Defining commute costs
+
+            if (clear === true) {
+              collision = 'does not intersect any construction!';
+              detail = `commute costs $${(route.distance * 0.0001767 * 520).toFixed(
+                0
+              )} annually on gas and avoids`;
+              emoji = '✔️';
+              map.setPaintProperty('theRoute', 'line-color', '#74c476');
+              // Hide the box
+              map.setLayoutProperty('theBox', 'visibility', 'none');
+              // Reset the counter
+              counter = 0;
+            } else {
+              // Collision occurred, so increment the counter
+              counter = counter + 1;
+              // As the attempts increase, expand the search area
+              // by a factor of the attempt count
+              polygon = turf.transformScale(polygon, counter * 0.01);
+              bbox = turf.bbox(polygon);
+              collision = 'is bad.';
+              detail = `commute costs $${(route.distance * 0.0001767 * 520).toFixed(
+                0
+              )} annually on gas and hits `;
+              emoji = '⚠️';
+              map.setPaintProperty('theRoute', 'line-color', '#de2d26');
+
+              // Add a randomly selected waypoint to get a new route from the Directions API
+              const randomWaypoint = turf.randomPoint(1, { bbox: bbox });
+              directions.setWaypoint(
+                0,
+                randomWaypoint['features'][0].geometry.coordinates
+              );
+            }
+            // Add a new report section to the sidebar
+            addCard(counter, reports, clear, detail);
+          }
+        }
+      });
+
+    </script>
+  </body>
+</html>
